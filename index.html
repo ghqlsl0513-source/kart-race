@@ -213,6 +213,7 @@ button{font-family:inherit;color:inherit;cursor:pointer}
 .fkArr{position:absolute;left:-26px;top:-26px;width:52px;height:52px;display:flex;align-items:center;justify-content:center;font-size:30px;font-weight:900;color:#0f172a;background:var(--c);border-radius:50%;border:3px solid #fff;box-shadow:0 4px 12px rgba(0,0,0,.5)}
 .fkDot{position:absolute;left:-9px;top:-9px;width:18px;height:18px;border-radius:50%;background:var(--c);border:3px solid #fff;opacity:.9}
 .fkEnd{position:absolute;left:-30px;top:-62px;background:var(--c);color:#0f172a;font-weight:900;font-size:12px;padding:3px 8px;border-radius:10px;border:2px solid #fff;white-space:nowrap;box-shadow:0 3px 8px rgba(0,0,0,.5)}
+#netWarn{position:fixed;left:50%;transform:translateX(-50%);top:calc(64px + env(safe-area-inset-top));z-index:45;background:#7c2d12;border:2px solid #fdba74;border-radius:14px;padding:8px 14px;font-size:13px;font-weight:800;width:max-content;max-width:92vw;text-align:center;box-shadow:0 6px 18px rgba(0,0,0,.5)}
 #peekBtn{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(150px + env(safe-area-inset-bottom));z-index:41;border:3px solid #fde047;border-radius:26px;padding:13px 22px;font-size:16px;font-weight:900;background:linear-gradient(180deg,#3b82f6,#1d4ed8);box-shadow:0 0 24px rgba(59,130,246,.8);animation:pulseC 1s infinite;white-space:nowrap}
 #icard{position:fixed;inset:0;z-index:42;display:flex;align-items:center;justify-content:center;background:radial-gradient(circle at 50% 45%,rgba(60,20,30,.5),rgba(3,6,15,.82));padding:16px}
 .ic{width:min(84vw,330px);border-radius:24px;background:linear-gradient(170deg,#2b3a8a,#16205a 60%,#0e143d);border:4px solid var(--c);box-shadow:0 0 40px color-mix(in srgb,var(--c) 70%,transparent),0 20px 50px rgba(0,0,0,.6);overflow:hidden;animation:icIn .45s cubic-bezier(.2,1.3,.4,1);text-align:center;cursor:pointer}
@@ -324,6 +325,7 @@ button{font-family:inherit;color:inherit;cursor:pointer}
 <button id="peekBtn" class="hidden">📋 선택창으로 돌아가기</button>
 <div id="icard" class="hidden"></div>
 <div id="land"></div>
+<div id="netWarn" class="hidden">⏳ 방장 연결 대기 중… 방장이 게임 화면으로 돌아오면 이어져요</div>
 <div id="dsum"></div>
 <div id="forkHint" class="hidden"></div>
 <div id="shopOv" class="hidden"><div class="shBox"><div class="shHead"><span class="ttl"></span><span class="shLz"></span></div><div class="shCards"></div><div class="shBtns"><button id="shRef"></button><button id="shOut" class="pri">상점 나가기 ▶</button></div><div class="shHint">카드를 터치하면 구매 · 바깥을 터치하면 지도 보기</div></div></div>
@@ -545,7 +547,7 @@ const SFX=(()=>{
 
 /* ===================================================================== 클라이언트 상태 */
 const C={mode:null,seat:0,S:null,lastFx:0,fxInit:false,lastLog:0,logs:[],shownPr:null,room:null,roomApi:undefined,code:null,cid:store.get('kart_cid')||uid(),nm:store.get('kart_nm')||'',lobby:false,lobBots:1,powerOn:store.get('kart_pow')!=='0',soloBots:3,speed:'normal',firstMe:true,lastRqId:{},prevHand:[]};
-if(QS.includes('mock')||QS.includes('fakepeer'))C.cid=uid();else store.set('kart_cid',C.cid);
+if(QS.includes('mock')||QS.includes('fakemqtt'))C.cid=uid();else store.set('kart_cid',C.cid);
 let G=null; // 엔진 상태 (방장/혼자하기에서만)
 
 /* =====================================================================
@@ -1487,18 +1489,19 @@ function rulesHTML(){
 /* =====================================================================
    방 (멀티플레이)
    ===================================================================== */
-if(QS.includes('fakepeer')){ // 테스트용 가짜 PeerJS (같은 브라우저 탭끼리)
-  const bc=new BroadcastChannel('fakepeer');
-  class FConn{constructor(pe,remote,id){this.peer=remote;this.open=false;this.h={};this._p=pe;this.id=id}on(e,f){(this.h[e]=this.h[e]||[]).push(f)}emit(e,a){(this.h[e]||[]).forEach(f=>f(a))}send(d){bc.postMessage({t:'data',to:this.peer,from:this._p.id,cid:this.id,d:JSON.parse(JSON.stringify(d))})}}
-  window.Peer=class{constructor(id){this.id=typeof id==='string'?id:'p'+Math.random().toString(36).slice(2,8);this.h={};this.conns={};
-    bc.addEventListener('message',e=>{const m=e.data;if(m.to!==this.id)return;
-      if(m.t==='conn'){const c=new FConn(this,m.from,m.cid);this.conns[m.cid]=c;this.emit('connection',c);setTimeout(()=>{c.open=true;c.emit('open');bc.postMessage({t:'ack',to:m.from,from:this.id,cid:m.cid})},10)}
-      if(m.t==='ack'){const c=this.conns[m.cid];if(c){c.open=true;c.acked=true;c.emit('open')}}
-      if(m.t==='data'){const c=this.conns[m.cid];if(c)c.emit('data',m.d)}});
-    setTimeout(()=>this.emit('open',this.id),20)}
-    on(e,f){(this.h[e]=this.h[e]||[]).push(f)}emit(e,a){(this.h[e]||[]).forEach(f=>f(a))}
-    connect(id){const cid='c'+Math.random().toString(36).slice(2,8);const c=new FConn(this,id,cid);this.conns[cid]=c;bc.postMessage({t:'conn',to:id,from:this.id,cid});setTimeout(()=>{if(!c.acked)this.emit('error',{type:'peer-unavailable'})},1500);return c}
-    destroy(){}reconnect(){}};
+if(QS.includes('fakemqtt')){ // 테스트용 가짜 MQTT 서버 (같은 브라우저 탭끼리, retain 지원)
+  const bc=new BroadcastChannel('fakemqtt'),ret={},clients=[];
+  bc.onmessage=e=>{const m=e.data;
+    if(m.t==='pub'){if(m.retain){if(m.payload==='')delete ret[m.topic];else ret[m.topic]=m.payload}clients.forEach(c=>c._deliver(m.topic,m.payload))}
+    if(m.t==='sync?')bc.postMessage({t:'sync',ret});if(m.t==='sync')for(const k in m.ret)if(!(k in ret))ret[k]=m.ret[k]};
+  bc.postMessage({t:'sync?'});
+  window.mqtt={connect(url,o){const h={};const c={connected:false,subs:[],
+    on(e,f){(h[e]=h[e]||[]).push(f)},emit(e,...a){(h[e]||[]).forEach(f=>f(...a))},
+    subscribe(t){const pre=t.replace('+','');this.subs.push(pre);setTimeout(()=>{for(const k in ret)if(k.startsWith(pre))this._deliver(k,ret[k])},5)},
+    _deliver(topic,payload){if(this.connected&&this.subs.some(p=>topic.startsWith(p)))this.emit('message',topic,new TextEncoder().encode(payload))},
+    publish(t,p,opt){const r=!!(opt&&opt.retain);if(r){if(p==='')delete ret[t];else ret[t]=p}clients.forEach(x=>x._deliver(t,p));bc.postMessage({t:'pub',topic:t,payload:p,retain:r})},
+    end(){this.connected=false},reconnect(){}};
+    clients.push(c);setTimeout(()=>{c.connected=true;c.emit('connect')},30);return c}};
 }
 if(QS.includes('mock')){ // 테스트용 가짜 room (같은 브라우저 탭끼리)
   const bc=new BroadcastChannel('mockroom'),me=Math.random().toString(36).slice(2,8);
@@ -1512,57 +1515,52 @@ if(QS.includes('mock')){ // 테스트용 가짜 room (같은 브라우저 탭끼
       peers:snap,onPeers:fn=>{subs.push(fn);setTimeout(()=>fn({peers:snap(),joined:snap(),left:[],updated:[]}),0);return()=>{}},connected:()=>true,onConnection:fn=>{setTimeout(()=>fn(true));return()=>{}},leave:async()=>{}};
   }}};
 }
-/* ---------- P2P 연결 (Claude 밖에서 열었을 때: PeerJS 무료 서버로 기기끼리 직접 연결) ---------- */
+/* ---------- 웹 버전 연결 (Claude 밖): 공개 MQTT 중계 서버로 연결 ----------
+   폰끼리 직접 연결(WebRTC)은 LTE 망에서 자주 막혀서, 두 폰이 같은 중계 서버에 접속해
+   메시지를 주고받아요. 서버가 각자의 마지막 상태를 기억(retain)해서 잠깐 끊겨도 다시 이어져요. */
 function loadScript(src){return new Promise((res,rej)=>{const sc=document.createElement('script');sc.src=src;sc.onload=res;sc.onerror=rej;document.head.appendChild(sc)})}
-async function peerRoomApi(){
-  if(!window.RTCPeerConnection&&!window.Peer)return null;
-  if(!window.Peer){
-    for(const u of['https://cdn.jsdelivr.net/npm/peerjs@1.5.5/dist/peerjs.min.js','https://unpkg.com/peerjs@1.5.5/dist/peerjs.min.js']){try{await loadScript(u);if(window.Peer)break}catch(e){}}
-  }
-  if(!window.Peer)return null;
-  return{join:(name,role)=>peerJoin(name,role)};
+const BROKERS=['wss://broker.emqx.io:8084/mqtt','wss://broker.hivemq.com:8884/mqtt'];
+async function mqttRoomApi(){
+  if(!window.mqtt){for(const u of['https://cdn.jsdelivr.net/npm/mqtt@5.16.1/dist/mqtt.min.js','https://unpkg.com/mqtt@5.16.1/dist/mqtt.min.js']){try{await loadScript(u);if(window.mqtt)break}catch(e){}}}
+  if(!window.mqtt||!window.mqtt.connect)return null;
+  return{join:(name,role)=>mqttJoin(name,role)};
 }
-function peerJoin(name,role){
+function mqttJoin(name,role){
   return new Promise((resolve,reject)=>{
-    const hostId='kartrace-'+name+'-v1';
-    let peer;try{peer=role==='host'?new Peer(hostId,{debug:0}):new Peer({debug:0})}catch(e){reject(e);return}
-    let mine={},others=new Map(),myPeer=null,hostConn=null,closed=false,done=false,sendQ=false,notifyQ=false;
-    const conns=new Map(),subs=[];
-    const snap=()=>[{peer:myPeer||'me',isMe:true,sameTab:true,kind:'viewer',guest:false,presence:mine},...[...others].map(([id,pr])=>({peer:id,isMe:false,sameTab:false,kind:'viewer',guest:false,presence:pr||{}}))];
+    const base='kartrace-v2/'+name,me='m'+uid();
+    let mine={},others=new Map(),client=null,bi=0,closed=false,done=false,sendQ=null,notifyQ=false,huntT=null,everHost=false;
+    const subs=[],conSubs=[];
+    const fresh=pr=>pr&&(!pr.ts||Math.abs(Date.now()-pr.ts)<90000);
+    const snap=()=>[{peer:me,isMe:true,sameTab:true,kind:'viewer',guest:false,presence:mine},...[...others].filter(([,pr])=>fresh(pr)).map(([id,pr])=>({peer:id,isMe:false,sameTab:false,kind:'viewer',guest:false,presence:pr}))];
     const notify=()=>{if(notifyQ)return;notifyQ=true;setTimeout(()=>{notifyQ=false;const sn=snap();subs.forEach(f=>{try{f({peers:sn,joined:[],left:[],updated:[]})}catch(e){console.error(e)}})},0)};
-    const flush=()=>{sendQ=false;
-      if(role==='host'){const msg={t:'all',list:[[myPeer,mine],...others]};conns.forEach(c=>{if(c.open)try{c.send(msg)}catch(e){}})}
-      else if(hostConn&&hostConn.open){try{hostConn.send({t:'pres',p:mine})}catch(e){}}};
-    const schedule=()=>{if(!sendQ){sendQ=true;setTimeout(flush,30)}};
+    const pub=()=>{clearTimeout(sendQ);sendQ=null;if(client&&client.connected){mine.ts=Date.now();try{client.publish(base+'/p/'+me,JSON.stringify(mine),{qos:0,retain:true})}catch(e){}}};
+    const schedule=()=>{if(!sendQ)sendQ=setTimeout(pub,110)};
+    const hostSeen=()=>[...others.values()].some(pr=>fresh(pr)&&pr.host===1);
     const api={name,
       presence:async pt=>{mine={...mine,...pt};for(const k in pt)if(pt[k]===null)delete mine[k];notify();schedule()},
       peers:snap,onPeers:fn=>{subs.push(fn);setTimeout(()=>fn({peers:snap(),joined:snap(),left:[],updated:[]}),0);return()=>{}},
-      connected:()=>!closed,onConnection:fn=>{setTimeout(()=>fn(true));return()=>{}},
-      leave:async()=>{closed=true;try{peer.destroy()}catch(e){}}};
-    const finish=()=>{if(!done){done=true;resolve(api)}};
-    let retryT=null;
-    const connect=()=>{if(closed||hostConn)return;clearTimeout(retryT);
-      const c=peer.connect(hostId,{reliable:true});
-      c.on('open',()=>{hostConn=c;finish();schedule()});
-      c.on('data',m=>{if(m&&m.t==='all'&&Array.isArray(m.list)){others=new Map(m.list.filter(x=>x[0]!==myPeer));notify()}});
-      c.on('close',()=>{if(hostConn===c)hostConn=null;others.clear();notify();retryT=setTimeout(connect,3000)});
-      c.on('error',()=>{});};
-    peer.on('open',id=>{myPeer=id;
-      if(role==='host'){
-        peer.on('connection',c=>{
-          c.on('open',()=>{conns.set(c.peer,c);schedule()});
-          c.on('data',m=>{if(m&&m.t==='pres'){others.set(c.peer,m.p||{});notify();schedule()}});
-          const drop=()=>{conns.delete(c.peer);if(others.delete(c.peer)){notify();schedule()}};
-          c.on('close',drop);c.on('error',drop)});
-        finish();
-      }else{connect();setTimeout(finish,8000)}
-    });
-    peer.on('error',e=>{
-      if(role==='guest'&&e&&e.type==='peer-unavailable'){hostConn=null;retryT=setTimeout(connect,3000);finish();return}
-      if(!myPeer&&!done){done=true;reject(e)}
-    });
-    peer.on('disconnected',()=>{if(!closed)try{peer.reconnect()}catch(e){}});
-    setTimeout(()=>{if(!done){done=true;try{peer.destroy()}catch(e){}reject(new Error('연결 시간 초과'))}},15000);
+      connected:()=>!!(client&&client.connected),onConnection:fn=>{conSubs.push(fn);setTimeout(()=>fn(api.connected()));return()=>{}},
+      leave:async()=>{closed=true;clearTimeout(huntT);try{client.publish(base+'/p/'+me,'',{qos:0,retain:true});setTimeout(()=>{try{client.end(true)}catch(e){}},400)}catch(e){}}};
+    const connect=i=>{
+      bi=i%BROKERS.length;others=new Map();notify();
+      if(client){try{client.end(true)}catch(e){}}
+      const c=client=window.mqtt.connect(BROKERS[bi],{clientId:me,clean:true,keepalive:20,connectTimeout:8000,reconnectPeriod:2500,will:{topic:base+'/p/'+me,payload:'',qos:0,retain:true}});
+      const failT=setTimeout(()=>{if(c===client&&!c.connected&&!closed&&!everHost)connect(bi+1)},9000);
+      c.on('connect',()=>{clearTimeout(failT);if(c!==client)return;c.subscribe(base+'/p/+',{qos:0});pub();conSubs.forEach(f=>f(true));
+        if(role==='host'){if(!done)setTimeout(()=>{if(done)return;done=true;if(hostSeen()){api.leave();reject({type:'unavailable-id'})}else resolve(api)},1300)}
+        else{if(!done){done=true;resolve(api)}
+          clearTimeout(huntT);huntT=setTimeout(()=>{if(!closed&&!everHost&&!hostSeen())connect(bi+1)},7000)}});
+      c.on('message',(t,payload)=>{if(c!==client)return;const id=t.slice(t.lastIndexOf('/')+1);if(id===me)return;
+        let txt='';try{txt=new TextDecoder().decode(payload)}catch(e){txt=String(payload)}
+        if(!txt){if(others.delete(id))notify();return}
+        try{const pr=JSON.parse(txt);others.set(id,pr);if(pr&&pr.host===1&&fresh(pr))everHost=true;notify()}catch(e){}});
+      c.on('close',()=>{if(c===client)conSubs.forEach(f=>f(false))});
+      c.on('error',()=>{});
+    };
+    setInterval(()=>{if(!closed)pub()},20000); // 살아있음 알림
+    document.addEventListener('visibilitychange',()=>{if(!document.hidden&&client&&!closed){if(!client.connected){try{client.reconnect()}catch(e){}}else pub()}});
+    connect(0);
+    setTimeout(()=>{if(!done){done=true;reject(new Error('연결 시간 초과'))}},26000);
   });
 }
 async function getRoomApi(){
@@ -1570,7 +1568,7 @@ async function getRoomApi(){
   let api=null;
   try{if(window.claude&&window.claude.use)api=await Promise.race([window.claude.use('room'),sleep(11000).then(()=>null)])}catch(e){api=null}
   if(api)C.net='claude';
-  else{try{api=await peerRoomApi()}catch(e){api=null}if(api)C.net='p2p'}
+  else{try{api=await mqttRoomApi()}catch(e){api=null}if(api)C.net='web'}
   C.roomApi=api;return api;
 }
 const roomPeers=()=>{try{return C.room?C.room.peers():[]}catch(e){return[]}};
@@ -1602,6 +1600,7 @@ function onGuestPeers(){
   if(C.mode!=='guest')return;
   const host=roomPeers().find(pe=>!pe.isMe&&pe.presence&&pe.presence.host===1&&pe.presence.code===C.code);
   C.hostSeenAt=host?Date.now():(C.hostSeenAt||Date.now());
+  $('#netWarn').classList.toggle('hidden',!!host||!C.inGame);
   if(!host){if(!C.S)renderWait();return}
   const st=host.presence.st;
   if(st&&st.pl){
@@ -1624,6 +1623,7 @@ function bindSeg(id,fn){document.querySelectorAll(`#${id} button`).forEach(b=>b.
 function titleScreen(){
   scr(`<div class="scr"><div class="logo">🏁 카트 레이싱<br>보드게임</div><div class="flag"></div><div class="sub">주사위 · 아이템 · 3바퀴 레이스</div>
    <input class="inp" id="nm" maxlength="8" placeholder="닉네임 입력" value="${esc(C.nm)}">
+   ${C.invite?`<button class="bigbtn b3" id="bInv" style="font-size:19px">🎟️ 초대받은 방 ${C.invite} 바로 참가</button>`:''}
    <button class="bigbtn b1" id="bSolo">🤖 혼자 하기 (봇 대전)</button>
    <button class="bigbtn b2" id="bHost">🏠 방 만들기</button>
    <button class="bigbtn b3" id="bJoin">🔑 방 참가하기</button>
@@ -1633,6 +1633,7 @@ function titleScreen(){
   $('#bSolo').onclick=()=>{SFX.init();SFX.play('click');if(!C.nm&&!$('#nm').value.trim())$('#nm').value='나';if(nmOk())soloScreen()};
   $('#bHost').onclick=()=>{SFX.init();SFX.play('click');if(nmOk())createRoom()};
   $('#bJoin').onclick=()=>{SFX.init();SFX.play('click');if(nmOk())joinScreen()};
+  const bi=$('#bInv');if(bi)bi.onclick=()=>{SFX.init();SFX.play('click');if(!nmOk())return;bi.disabled=true;bi.innerHTML='<span class="spin"></span> 연결 중';const c=C.invite;C.invite=null;try{history.replaceState(null,'',location.pathname+location.search)}catch(e){}joinCode(c)};
   $('#bLocal').onclick=()=>{SFX.init();SFX.play('click');if(!$('#nm').value.trim())$('#nm').value='플레이어1';nmOk();localScreen()};
 }
 function localScreen(){
@@ -1690,7 +1691,7 @@ async function createRoom(){
 function roomError(e){
   scr(`<div class="scr"><div class="logo" style="font-size:28px">😢 멀티 연결 불가</div>
    <div class="err">이 화면에서는 기기끼리 연결할 수 없어요.</div>
-   <div class="hint">• Claude 안에서: 로그인한 상태로 열고, 친구는 공유 메뉴에서 <b>초대받은 계정</b>으로 열어야 해요.<br>• Claude 계정이 없는 친구와는: 이 게임 파일을 웹에 올린 <b>온라인 버전 링크</b>로 둘 다 들어오거나, 아래 <b>한 폰으로 같이하기</b>를 이용하세요.<br>${e?`<span class="muted">(${esc(e.type||e.code||e.message||e)})</span>`:''}</div>
+   <div class="hint">• Claude 안에서: 로그인한 상태로 열고, 친구는 공유 메뉴에서 <b>초대받은 계정</b>으로 열어야 해요.<br>• 웹 주소로 열었다면: 인터넷 연결을 확인하고 다시 시도해 주세요. 회사·학교 와이파이에서 막히면 LTE·5G로 바꿔보세요.<br>• 아니면 아래 <b>한 폰으로 같이하기</b>를 이용하세요.<br>${e?`<span class="muted">(${esc(e.type||e.code||e.message||e)})</span>`:''}</div>
    <button class="bigbtn b2" id="loc">👥 한 폰으로 같이하기</button><button class="bigbtn b1" id="back">← 처음으로</button></div>`);
   $('#back').onclick=titleScreen;$('#loc').onclick=localScreen;
 }
@@ -1710,7 +1711,11 @@ function renderLobby(){
    <div class="lab">💪 파워 주사위</div>${segHTML('lPow',[[1,'결과에 영향'],[0,'원작 규칙 (연출만)']],C.powerOn?1:0)}
    <button class="bigbtn b1" id="go" ${total+C.lobBots<2?'disabled':''}>🏁 게임 시작 (${total+C.lobBots}명)</button>
    <button class="bigbtn" id="back">← 방 나가기</button>
-   <div class="hint">친구는 이 게임 페이지를 <b>초대받은 계정</b>으로 열고 → 닉네임 → <b>방 참가하기</b> → 코드 입력.<br>(공유 메뉴에서 친구의 Claude 계정 이메일을 초대해 주세요)</div></div>`;
+   ${C.net==='web'?`<button class="bigbtn b3" id="inv">🔗 초대 링크 보내기</button><div class="hint">링크를 받은 친구는 <b>사파리</b>로 열고 닉네임만 넣으면 바로 들어와요.<br>⚠️ 링크를 보낸 뒤 <b>이 화면으로 꼭 돌아와 주세요.</b> 방장이 다른 앱에 오래 있으면 연결이 잠시 끊겨요.</div>`
+     :`<div class="hint">친구는 이 게임 페이지를 <b>초대받은 계정</b>으로 열고 → 닉네임 → <b>방 참가하기</b> → 코드 입력.<br>(공유 메뉴에서 친구의 Claude 계정 이메일을 초대해 주세요)</div>`}</div>`;
+  const ib=$('#inv');if(ib)ib.onclick=async()=>{const url=location.origin+location.pathname+'#join-'+C.code,txt=`🏁 카트 레이싱 보드게임 같이 하자! 방 코드 ${C.code}`;
+    try{if(navigator.share){await navigator.share({title:'카트 레이싱',text:txt,url});return}}catch(e){if(e&&e.name==='AbortError')return}
+    try{await navigator.clipboard.writeText(txt+'\n'+url);ib.textContent='✅ 링크 복사됨 — 카톡에 붙여넣기';}catch(e){ib.textContent=url}};
   bindSeg('lBots',v=>{C.lobBots=+v;renderLobby()});bindSeg('lPow',v=>{C.powerOn=v==='1';store.set('kart_pow',v);C.lobSig=null;renderLobby()});
   $('#back').onclick=()=>{C.lobby=false;C.mode=null;try{C.room.leave()}catch(e){}C.room=null;titleScreen()};
   $('#go').onclick=()=>{
@@ -1727,17 +1732,20 @@ function joinScreen(){
    <input class="inp" id="code" inputmode="numeric" maxlength="4" placeholder="방 코드 4자리" style="font-size:28px;letter-spacing:8px">
    <button class="bigbtn b3" id="go">입장하기</button><button class="bigbtn" id="back">← 뒤로</button><div id="jerr" class="err"></div></div>`);
   $('#back').onclick=titleScreen;
-  $('#go').onclick=async()=>{const code=$('#code').value.trim();if(!/^\d{4}$/.test(code)){$('#jerr').textContent='4자리 숫자 코드를 입력해 주세요.';return}
-    $('#go').disabled=true;$('#go').innerHTML='<span class="spin"></span> 연결 중';
-    const api=await getRoomApi();if(!api){roomError();return}
-    try{C.code=code;C.room=await api.join('kart-'+code,'guest');C.mode='guest';C.inGame=false;
-      await C.room.presence({cid:C.cid,nm:C.nm});C.room.onPeers(onGuestPeers,()=>{});renderWait()}catch(e){roomError(e)}};
+  $('#go').onclick=()=>{const code=$('#code').value.trim();if(!/^\d{4}$/.test(code)){$('#jerr').textContent='4자리 숫자 코드를 입력해 주세요.';return}
+    $('#go').disabled=true;$('#go').innerHTML='<span class="spin"></span> 연결 중';joinCode(code)};
+}
+async function joinCode(code){
+  const api=await getRoomApi();if(!api){roomError();return}
+  try{C.code=code;C.room=await api.join('kart-'+code,'guest');C.mode='guest';C.inGame=false;C.waitStart=Date.now();
+    await C.room.presence({cid:C.cid,nm:C.nm});C.room.onPeers(onGuestPeers,()=>{});renderWait()}catch(e){roomError(e)}
 }
 function renderWait(lob){
   if(C.inGame)return;
+  const long=!lob&&C.waitStart&&Date.now()-C.waitStart>10000;clearTimeout(C.waitT);if(!lob)C.waitT=setTimeout(()=>{if(C.mode==='guest'&&!C.inGame&&!C.lastLobby)renderWait()},4000);C.lastLobby=lob||null;
   scr(`<div class="scr"><div class="sub" style="margin:0">방 코드</div><div class="code">${esc(C.code)}</div>
    ${lob?`<div class="plist">${(lob.list||[]).map((n,i)=>`<div><i style="background:${COLORS[i]}"></i>${esc(n)}${i===0?' 👑':''}</div>`).join('')}${Array.from({length:lob.bots||0},(_,j)=>`<div><i style="background:${COLORS[(lob.list||[]).length+j]}"></i>🤖 봇${j+1}</div>`).join('')}</div>
-   <p class="sub" style="margin-top:10px">💪 파워 주사위: ${lob.po?'결과에 영향':'원작 규칙 (연출만)'}</p><p class="sub"><span class="spin"></span> 방장이 시작하면 자동으로 들어가요</p>`:`<p class="sub"><span class="spin"></span> 방장을 찾는 중… 코드가 맞는지 확인해 주세요</p>`}
+   <p class="sub" style="margin-top:10px">💪 파워 주사위: ${lob.po?'결과에 영향':'원작 규칙 (연출만)'}</p><p class="sub"><span class="spin"></span> 방장이 시작하면 자동으로 들어가요</p>`:`<p class="sub"><span class="spin"></span> 방장을 찾는 중…</p>${long?`<div class="hint" style="text-align:left;background:rgba(255,255,255,.06);border-radius:12px;padding:10px 12px">오래 걸리면 확인해 주세요<br>• 방장 폰에서 <b>게임 화면(방 코드 화면)이 켜져 있는지</b> — 카톡 등 다른 앱으로 나가 있으면 연결이 끊겨요<br>• 방 코드가 맞는지<br>• 두 폰 모두 <b>같은 주소</b>로 들어왔는지</div>`:''}`}
    <button class="bigbtn" id="back">← 나가기</button></div>`);
   $('#back').onclick=()=>{C.mode=null;try{C.room.leave()}catch(e){}C.room=null;titleScreen()};
 }
@@ -1759,6 +1767,7 @@ function showResults(){
     else if(C.mode==='local')localScreen();else soloScreen()};
 }
 
+{const m=location.hash.match(/^#join-(\d{4})$/);if(m)C.invite=m[1]}
 titleScreen();
 requestAnimationFrame(frame);
 if(TEST){C.mode='solo';C.seat=0;SP={step:0,bot:0,dice:0,land:0,shot:0};newGame([{bot:1},{bot:1},{bot:1},{bot:1}]);startEngine()}
